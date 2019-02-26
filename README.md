@@ -1,4 +1,4 @@
-This is "forked" content.  This fork's main purpose is to show an alternative version of the VB-Script file "ExtractCode.vbs" 
+This is not original content.  The main purpose for this branched code is to show an alternative version of the VB-Script file "vbscript\ExtractCode.vbs" 
 
 For more information ....
 
