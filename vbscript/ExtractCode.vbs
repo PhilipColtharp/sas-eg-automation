@@ -4,15 +4,24 @@
 ' https://github.com/cjdinger/sas-eg-automation/blob/master/vbscript/ExtractCode.vbs
 '
 ' This program extracts code from EGP file quite differently from original code:
-' Uses SAS Enterprise Guide automation to read an EGP file
-' and export all SAS programs to ONE SAS file
+' Uses SAS Enterprise Guide automation to read an EGP file and export all SAS
+' programs to SAS files There is a new SAS file created for each process flow
+' within the project.  The internal nodes are output to the SAS file, concatenated
+' and sorted in alpha-numeric order by node name, if the node starts with a number.
 '
-' This code is customized to work with an EGP file where the user has mannualy
+' Makes one SAS file per project flow.
+'
+' This code is customized to work with an EGP file where the user has manually
 ' entered numbers as prefixes to the labels of all the projects nodes (defined
-' in node.Name) so that, for example when the nodes are added to a EG Ordered
+' in node.Name) so that, for example when the nodes are added to an EG Ordered
 ' List, a proper execution order is found by simply sorting the nodes by the
 ' label node.Name.  That ordering is detected by this code; its extracted and
 ' sorted, but only nodes with numbers are output to the new file.
+'
+' E.g. node names:
+'   010 Setup, 100 main, 801 ODS output, 900 save datasets;
+' or:
+'   0100 Setup, 1000 part 1, 2000 part 2, 8000 Output.
 '
 ' This script uses the Scripting.FileSystemObject to save the code,
 ' _which_WILL_NOT_ include
@@ -34,7 +43,7 @@
 Option Explicit
 Dim Application ' As SASEGuide.Application
 
-Sub EGPConvert_v8()
+Sub EGPConvert_v5()
   Dim Project
   
   ' Change if running a different version of EG
@@ -88,8 +97,6 @@ Sub EGPConvert_v8()
       End
   End If
   
- 
-  
   Dim item
   Dim flow
   Dim Unsorted
@@ -108,7 +115,72 @@ Sub EGPConvert_v8()
   Set Unsorted = CreateObject("System.Collections.ArrayList")
   
   ' Navigate the process flows in the Project object
+  For Each flow In Project.ContainerCollection
+  ' ProcessFlow is ContainerType of 0
+  If flow.ContainerType = 0 Then
+    'TxtOutput will be saved in FlowFilename
+      FlowFilename = programsFolder & "\" & flow.Name & ".sas"
+      WScript.Echo "Process Flow: " & FlowFilename
+      TxtOutput = ""
+      nodeNumber = 0
+  ' Navigate the items in each process flow
+  Unsorted.Clear()
+  For Each item In flow.Items
+    WScript.Echo "=Unsorted<--" & item.Name & " Type: " & item.Type
+    Unsorted.Add item
+  Next
+  Set Items_Sorted = SortArrayList_ByName(Unsorted)
+  For i = 0 To Items_Sorted.Count - 1
+    Set item = Items_Sorted(i)
+    begins_with_a_number = InStr(1, "0123456789", Left(item.Name, 1), 0) > 0
+          If begins_with_a_number Then
+        Select Case item.Type
+
+          Case egCode
+            'MsgBox "  " & item.Name
+          TxtOutput = TxtOutput & _
+            "%LET _CLIENTTASKLABEL=" & strClean(item.Name) & ";" & vbCrLf & vbCrLf & item.text & vbCrLf & vbCrLf
+                  nodeNumber = nodeNumber + 1
+          
+          Case egNote
+          MsgBox "  " & item.Name & ", item.text=" & item.text
+          'TxtOutput = TxtOutput & _
+            "%LET _CLIENTTASKLABEL=" & strClean(item.Name) & ";" & vbCrLf & "/*" & vbCrLf & item.text & vbCrLf & "*/" & vbCrLf
+                  'nodeNumber = nodeNumber + 1
+                  
+          Case egTask, egQuery
+          Dim item_TaskCode_Is_Nothing As Boolean
+            item_TaskCode_Is_Nothing = item.TaskCode Is Nothing
+            'MsgBox "  " & item.Name & ", Task/Query" & vbCrLf & _
+                   "item_TaskCode_Is_Nothing is" & Str(item_TaskCode_Is_Nothing)
+            
+          If (Not item.TaskCode Is Nothing) Then
+            TxtOutput = TxtOutput & _
+              "%LET _CLIENTTASKLABEL=" & strClean(item.Name) & ";" & vbCrLf & vbCrLf & item.TaskCode.text & vbCrLf & vbCrLf
+          End If
+                  nodeNumber = nodeNumber + 1
   
+          Case egData
+            'MsgBox "  " & item.Name & ", Data: " & item.fileName
+          'tableOfContents = tableOfContents & " (Data set)"
+          Dim task
+          For Each task In item.Tasks
+            'MsgBox "    " & task.Name & ", sub-task: "
+            If (Not task.TaskCode Is Nothing) Then
+            TxtOutput = TxtOutput & _
+              "%LET _CLIENTTASKLABEL=" & strClean(task.Name) & ";" & vbCrLf & vbCrLf & item.TaskCode.text & vbCrLf & vbCrLf
+            End If
+          Next
+                    nodeNumber = nodeNumber + 1
+  
+        End Select
+    End If
+        Next
+     If nodeNumber > 0 Then _
+       saveTextToFile FlowFilename, TxtOutput
+  End If
+Next
+
   For Each flow In Project.ContainerCollection
     ' ProcessFlow is ContainerType of 0
     If flow.ContainerType = 0 Then
@@ -276,3 +348,4 @@ Function Checkerror(fnName)
     End If
          
 End Function
+
