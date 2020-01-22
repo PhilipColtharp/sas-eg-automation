@@ -69,8 +69,8 @@ Sub EGPConvert_v8()
   Dim EGPfile As String
   Dim programsFolder As String
   
-  EGPfile = "C:\Users\me\Desktop\ExtractCode\fact_sheet.egp"
-  programsFolder = "C:\Users\me\Desktop\ExtractCode\"
+  EGPfile = "C:\Users\drespc1\Desktop\ExtractCode\Project year.egp"
+  programsFolder = "C:\Users\drespc1\Desktop\ExtractCode\"
    
   ' Create a new SAS Enterprise Guide automation session
   On Error Resume Next
@@ -101,7 +101,7 @@ Sub EGPConvert_v8()
   
   MkDir programsFolder & Project.Name
     outputFilename = programsFolder & Project.Name & "\" & Project.Name & ".sas"
-    MsgBox "saving code to " & vbCrLf & outputFilename
+    'MsgBox "saving code to " & vbCrLf & outputFilename
     'TxtOutput will be saved in outputFilename
     TxtOutput = ""
   
@@ -112,11 +112,11 @@ Sub EGPConvert_v8()
   For Each flow In Project.ContainerCollection
     ' ProcessFlow is ContainerType of 0
     If flow.ContainerType = 0 Then
-        MsgBox "Process Flow: " & flow.Name
+        'MsgBox "Process Flow: " & flow.Name
         nodeNumber = 0
     ' Navigate the items in each process flow
     For Each item In flow.Items
-      MsgBox "=Unsorted<--" & item.Name & " Type: " & item.Type
+      'MsgBox "=Unsorted<--" & item.Name & " Type: " & item.Type
       Unsorted.Add item
     Next
     End If
@@ -124,7 +124,7 @@ Sub EGPConvert_v8()
     Set Items_Sorted = SortArrayList_ByName(Unsorted)
     For i = 0 To Items_Sorted.Count - 1
       Set item = Items_Sorted(i)
-      'MsgBox "  " & item.Name & ", item.Type=" & Str(item.Type)
+      MsgBox "  " & item.Name & ", item.Type=" & Str(item.Type)
 
       'Only Process if item.name begins with a number
         Dim item_Name_begins_with_number As Boolean
@@ -139,10 +139,16 @@ Sub EGPConvert_v8()
             "%LET _CLIENTTASKLABEL=" & strClean(item.Name) & ";" & vbCrLf & vbCrLf & item.text & vbCrLf & vbCrLf
                   nodeNumber = nodeNumber + 1
           
+          Case egNote
+          MsgBox "  " & item.Name & ", item.text=" & item.text
+          'TxtOutput = TxtOutput & _
+            "%LET _CLIENTTASKLABEL=" & strClean(item.Name) & ";" & vbCrLf & "/*" & vbCrLf & item.text & vbCrLf & "*/" & vbCrLf
+                  'nodeNumber = nodeNumber + 1
+                  
           Case egTask, egQuery
           Dim item_TaskCode_Is_Nothing As Boolean
             item_TaskCode_Is_Nothing = item.TaskCode Is Nothing
-            MsgBox "  " & item.Name & ", Task/Query" & vbCrLf & _
+            'MsgBox "  " & item.Name & ", Task/Query" & vbCrLf & _
                    "item_TaskCode_Is_Nothing is" & Str(item_TaskCode_Is_Nothing)
             
           If (Not item.TaskCode Is Nothing) Then
@@ -156,7 +162,7 @@ Sub EGPConvert_v8()
           'tableOfContents = tableOfContents & " (Data set)"
           Dim task
           For Each task In item.Tasks
-                        MsgBox "    " & task.Name & ", sub-task: "
+            'MsgBox "    " & task.Name & ", sub-task: "
             If (Not task.TaskCode Is Nothing) Then
             TxtOutput = TxtOutput & _
               "%LET _CLIENTTASKLABEL=" & strClean(task.Name) & ";" & vbCrLf & vbCrLf & item.TaskCode.text & vbCrLf & vbCrLf
@@ -169,7 +175,7 @@ Sub EGPConvert_v8()
       End If
           Next
           
-  MsgBox "nodeNumber=" & Str(nodeNumber)
+    'MsgBox "nodeNumber=" & Str(nodeNumber)
     If nodeNumber > 0 Then _
       saveTextToFile outputFilename, TxtOutput
   
@@ -201,7 +207,7 @@ End Function
 
 ' Save a block of text (code or log) to text file
 Function saveTextToFile(fileName, text)
-  MsgBox "running: saveTextToFile"
+  'MsgBox "running: saveTextToFile"
   Dim objFS As FileSystemObject
   Dim objOutFile
   Set objFS = CreateObject("Scripting.FileSystemObject")
@@ -265,15 +271,8 @@ Function Checkerror(fnName)
     
     If Err.Number <> 0 Then
         strmsg = "Error #" & Hex(Err.Number) & vbCrLf & "In Function " & fnName & vbCrLf & Err.Description
-        'MsgBox strmsg  'Uncomment this line if you want to be notified via MessageBox of Errors in the script.
+        MsgBox strmsg  'Uncomment this line if you want to be notified via MessageBox of Errors in the script.
         Checkerror = True
     End If
          
 End Function
-
-
-
-
-
-
-
