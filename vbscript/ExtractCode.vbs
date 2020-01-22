@@ -9,14 +9,15 @@
 ' within the project.  The internal nodes are output to the SAS file, concatenated
 ' and sorted in alpha-numeric order by node name, if the node starts with a number.
 '
-' Makes one SAS file per project flow.
+' Makes up to one SAS file per project flow.
 '
 ' This code is customized to work with an EGP file where the user has manually
 ' entered numbers as prefixes to the labels of all the projects nodes (defined
 ' in node.Name) so that, for example when the nodes are added to an EG Ordered
 ' List, a proper execution order is found by simply sorting the nodes by the
 ' label node.Name.  That ordering is detected by this code; its extracted and
-' sorted, but only nodes with numbers are output to the new file.
+' sorted, but only nodes with labels beginning with numbers are output to the
+' new file.
 '
 ' E.g. node names:
 '   010 Setup, 100 main, 801 ODS output, 900 save datasets;
