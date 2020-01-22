@@ -5,12 +5,14 @@
 '
 ' This program extracts code from EGP file quite differently from original code:
 ' Uses SAS Enterprise Guide automation to read an EGP file
-' and export all SAS programs to SAS files
-' There is a new SAS file created for each process flow
-' within the project
-' The internal nodes are output to the SAS file, concatenated 
-' and sorted in alpha-numeric order by node name
-' Process Flows with no nodes produce no SAS files 
+' and export all SAS programs to ONE SAS file
+'
+' This code is customized to work with an EGP file where the user has mannualy 
+' entered numbers as prefixes to the labels of all the projects nodes (defined 
+' in node.Name) so that, for example when the nodes are added to a EG Ordered 
+' List, a proper execution order is found by simply sorting the nodes by the 
+' label node.Name.  That ordering is detected by this code; its extracted and 
+' sorted, but only nodes with numbers are output to the new file.   
 '
 ' This script uses the Scripting.FileSystemObject to save the code, 
 ' _which_WILL_NOT_ include
@@ -20,138 +22,172 @@
 ' the name of the node (perhaps slightly altered) and is given without quotes.
 '
 ' USAGE:
-'   cscript.exe ExtractCode.vbs <path-to-EGP-file>
-' EXAMPLE:
-'   cscript.exe ExtractCode.vbs c:\projects\DonorsChoose.egp
+'   Add code to and Excel Visual Basic Application editor 
+'   Check boxes for object files in Tool-->References
+'   Change variables: EGPfile, programsFolder
+'   Change variable egVersion when SAS upgrades its SASEGObjectModel version
 '
-' NOTE: use proper version of CSCRIPT.exe for your SAS Enterprise Guide
-' version.  For 32-bit EG on 64-bit Windows, use 
-'      c:\Windows\SysWOW64\cscript.exe 
-' ------------------------------------------------
-' force declaration of variables in VB Script
+' Required References:
+'  * SAS: Integrated Object Model (IOM)
+'  * Microsoft Scripting Runtime
+
 Option Explicit
-Dim Application
-Dim Project
+Dim Application ' As SASEGuide.Application
 
-' Change if running a different version of EG
-Dim egVersion 
-egVersion = "SASEGObjectModel.Application.7.1"
-
-' enumeration of project item types
-Const egLog = 0  
-Const egCode = 1  
-Const egData = 2  
-Const egQuery = 3  
-Const egContainer = 4  
-Const egDocBuilder = 5  
-Const egNote = 6  
-Const egResult = 7  
-Const egTask = 8  
-Const egTaskCode = 9  
-Const egProjectParameter = 10  
-Const egOutputData = 11  
-Const egStoredProcess = 12  
-Const egStoredProcessParameter = 13  
-Const egPublishAction = 14  
-Const egCube = 15  
-Const egReport = 18  
-Const egReportSnapshot = 19  
-Const egOrderedList = 20  
-Const egSchedule = 21  
-Const egLink = 22  
-Const egFile = 23  
-Const egIntrNetApp = 24  
-Const egInformationMap = 25  
- 
-If WScript.Arguments.Count = 0 Then
-  WScript.Echo "ERROR: Expecting the full path name of a project file"
-  WScript.Quit -1
-End If
-
-' Create a new SAS Enterprise Guide automation session
-On Error Resume Next
-Set Application = WScript.CreateObject(egVersion)
-' WScript.Echo "Opening project: " & WScript.Arguments.Item(0)
-
-' Open the EGP file with the Application
-Set Project = Application.Open(WScript.Arguments.Item(0),"")
-If Err.Number <> 0 Then
-  WScript.Echo "ERROR: Unable to open " _
-    & WScript.Arguments.Item(0) & " as a project file"
-  WScript.Quit -1
-End If
-
-Dim programsFolder
-  programsFolder = getWorkingDirectory() _
-    & "\" & Project.Name & "_programs"
-  Wscript.Echo "Target folder for SAS programs is "  & programsFolder
-  createFolder(programsFolder)
-
-Dim item 
-Dim flow
-DIm Unsorted
-Dim Items_Sorted
-Dim FlowFilename
-Dim TxtOutput
-Dim task
-Dim i
-Dim nodeNumber
-
-
-Set Unsorted = CreateObject("System.Collections.ArrayList")
-
-' Navigate the process flows in the Project object
-For Each flow In Project.ContainerCollection
-  ' ProcessFlow is ContainerType of 0
-  If flow.ContainerType = 0 Then
-    'TxtOutput will be saved in FlowFilename
-      FlowFilename = programsFolder & "\" & flow.Name & ".sas"
-      WScript.Echo "Process Flow: " & FlowFilename
-      TxtOutput = ""
-      nodeNumber = 0
-	' Navigate the items in each process flow
-	Unsorted.Clear()
-	For Each item in flow.Items
-	  Unsorted.Add item
-	Next
-	Set Items_Sorted = SortArrayList_ByName(Unsorted)
-	for i=0 to Items_Sorted.Count -1
-	  Set item=Items_Sorted(i)
-	  Select Case item.Type
-
-	    Case egCode 
-	      WScript.Echo "  " & item.Name
-		  TxtOutput = TxtOutput & _
-		    "%LET _CLIENTTASKLABEL=" & strClean(item.Name) & ";" & vbCrLf & item.Text & vbCrLf
-              nodeNumber=nodeNumber+1
-	      
-	    Case egTask, egQuery
-	      WScript.Echo "  " & item.Name & ", Task/Query"
-		  If (Not item.TaskCode is Nothing) Then
-		    TxtOutput = TxtOutput & _
-		      "%LET _CLIENTTASKLABEL=" & strClean(item.Name) & ";" & vbCrLf & item.TaskCode.Text & vbCrLf
-		  End If
-              nodeNumber=nodeNumber+1
+Sub EGPConvert_v8()
+  Dim Project
   
-	    End Select
-	Next
-     if nodeNumber>0 then _
-       saveTextToFile FlowFilename, TxtOutput
+  ' Change if running a different version of EG
+  Dim egVersion
+  egVersion = "SASEGObjectModel.Application.8.1"
+  
+  ' enumeration of project item types
+  Const egLog = 0
+  Const egCode = 1
+  Const egData = 2
+  Const egQuery = 3
+  Const egContainer = 4
+  Const egDocBuilder = 5
+  Const egNote = 6
+  Const egResult = 7
+  Const egTask = 8
+  Const egTaskCode = 9
+  Const egProjectParameter = 10
+  Const egOutputData = 11
+  Const egStoredProcess = 12
+  Const egStoredProcessParameter = 13
+  Const egPublishAction = 14
+  Const egCube = 15
+  Const egReport = 18
+  Const egReportSnapshot = 19
+  Const egOrderedList = 20
+  Const egSchedule = 21
+  Const egLink = 22
+  Const egFile = 23
+  Const egIntrNetApp = 24
+  Const egInformationMap = 25
+  Dim EGPfile As String
+  Dim programsFolder As String
+  
+  EGPfile = "C:\Users\drespc1\Desktop\ExtractCode\fact_sheet.egp"
+  programsFolder = "C:\Users\drespc1\Desktop\ExtractCode\"
+   
+  ' Create a new SAS Enterprise Guide automation session
+  On Error Resume Next
+  Set Application = CreateObject(egVersion)
+  If Err.Number <> 0 Then
+    MsgBox "ERROR: Need help with 'Set Application = WScript.CreateObject(egVersion)'"
+    End
   End If
-Next
+   MsgBox Application.Name & ", Version: " & Application.Version & vbCrLf & "Opening project: " & EGPfile
+  
+  ' Open the EGP file with the Application
+  Set Project = Application.Open(EGPfile, "")
+  If Err.Number <> 0 Then
+    MsgBox "ERROR: Unable to open " & EGPfile & " as a project file"
+      End
+  End If
+  
+ 
+  
+  Dim item
+  Dim flow
+  Dim Unsorted
+  Dim Items_Sorted
+  Dim outputFilename
+  Dim TxtOutput
+  Dim i
+  Dim nodeNumber
+  
+  MkDir programsFolder & Project.Name
+    outputFilename = programsFolder & Project.Name & "\" & Project.Name & ".sas"
+    MsgBox "saving code to " & vbCrLf & outputFilename
+    'TxtOutput will be saved in outputFilename
+    TxtOutput = ""
+  
+  Set Unsorted = CreateObject("System.Collections.ArrayList")
+  
+  ' Navigate the process flows in the Project object
+  
+  For Each flow In Project.ContainerCollection
+    ' ProcessFlow is ContainerType of 0
+    If flow.ContainerType = 0 Then
+        MsgBox "Process Flow: " & flow.Name
+        nodeNumber = 0
+    ' Navigate the items in each process flow
+    For Each item In flow.Items
+      MsgBox "=Unsorted<--" & item.Name & " Type: " & item.Type
+      Unsorted.Add item
+    Next
+    End If
+  Next
+    Set Items_Sorted = SortArrayList_ByName(Unsorted)
+    For i = 0 To Items_Sorted.Count - 1
+      Set item = Items_Sorted(i)
+      'MsgBox "  " & item.Name & ", item.Type=" & Str(item.Type)
 
-' Close the project
-Project.Close
-' Quit/close the Application object
-Application.Quit
+      'Only Process if item.name begins with a number
+        Dim item_Name_begins_with_number As Boolean
+          item_Name_begins_with_number = InStr(1, "0123456789", Left(item.Name, 1), 0) > 0
+       
+        If item_Name_begins_with_number Then
+          Select Case item.Type
+  
+          Case egCode
+            'MsgBox "  " & item.Name
+          TxtOutput = TxtOutput & _
+            "%LET _CLIENTTASKLABEL=" & strClean(item.Name) & ";" & vbCrLf & vbCrLf & item.text & vbCrLf & vbCrLf
+                  nodeNumber = nodeNumber + 1
+          
+          Case egTask, egQuery
+          Dim item_TaskCode_Is_Nothing As Boolean
+            item_TaskCode_Is_Nothing = item.TaskCode Is Nothing
+            MsgBox "  " & item.Name & ", Task/Query" & vbCrLf & _
+                   "item_TaskCode_Is_Nothing is" & Str(item_TaskCode_Is_Nothing)
+            
+          If (Not item.TaskCode Is Nothing) Then
+            TxtOutput = TxtOutput & _
+              "%LET _CLIENTTASKLABEL=" & strClean(item.Name) & ";" & vbCrLf & vbCrLf & item.TaskCode.text & vbCrLf & vbCrLf
+          End If
+                  nodeNumber = nodeNumber + 1
+  
+          Case egData
+            'MsgBox "  " & item.Name & ", Data: " & item.fileName
+          'tableOfContents = tableOfContents & " (Data set)"
+          Dim task
+          For Each task In item.Tasks
+                        MsgBox "    " & task.Name & ", sub-task: "
+            If (Not task.TaskCode Is Nothing) Then
+            TxtOutput = TxtOutput & _
+              "%LET _CLIENTTASKLABEL=" & strClean(task.Name) & ";" & vbCrLf & vbCrLf & item.TaskCode.text & vbCrLf & vbCrLf
+            End If
+          Next
+                    nodeNumber = nodeNumber + 1
+
+  
+          End Select
+      End If
+          Next
+          
+  MsgBox "nodeNumber=" & Str(nodeNumber)
+    If nodeNumber > 0 Then _
+      saveTextToFile outputFilename, TxtOutput
+  
+  
+  ' Close the project
+  Project.Close
+  ' Quit/close the Application object
+  Application.Quit
+   
+End Sub
 
 ' --- Helper functions ----------------
 
 ' function to get the current working directory
 Function getWorkingDirectory()
-	Dim objShell
-	Set objShell = CreateObject("Wscript.Shell")
-	getWorkingDirectory = objShell.CurrentDirectory
+  Dim objShell
+  Set objShell = CreateObject("Wscript.Shell")
+  getWorkingDirectory = objShell.CurrentDirectory
 End Function
 
 ' function to create a new subfolder, if it doesn't yet exist
@@ -159,24 +195,25 @@ Function createFolder(folderName)
   Dim objFSO
   Set objFSO = CreateObject("Scripting.FileSystemObject")
   If objFSO.FolderExists(folderName) = False Then
-	objFSO.CreateFolder folderName
+  objFSO.createFolder folderName
   End If
 End Function
 
 ' Save a block of text (code or log) to text file
 Function saveTextToFile(fileName, text)
-  Dim objFS
+  MsgBox "running: saveTextToFile"
+  Dim objFS As FileSystemObject
   Dim objOutFile
   Set objFS = CreateObject("Scripting.FileSystemObject")
-  Set objOutFile = objFS.CreateTextFile(fileName,True)
-  objOutFile.Write(text)
+  Set objOutFile = objFS.CreateTextFile(fileName, True)
+  objOutFile.Write (text)
   objOutFile.Close
   IF_Saving_Error_THEN_Report Err.Number, fileName
 End Function
 
-Function IF_Saving_Error_THEN_Report  ( byRef Err_Number, fileName)
+Function IF_Saving_Error_THEN_Report(ByRef Err_Number, fileName)
   If Err.Number <> 0 Then
-    WScript.Echo "     ERROR: There was an error while saving " & fileName
+    MsgBox "     ERROR: There was an error while saving " & fileName
     Err.Clear
   End If
 End Function
@@ -184,38 +221,58 @@ End Function
 'Sort an array of object pointers that have the Name Property
 Function SortArrayList_ByName(ByVal array_)
     Dim i, j, temp
-   ' WScript.Echo array_(1).Name
-    For i = (array_.Count - 1) to 0 Step -1
-	    'WScript.Echo "i-"&i
-        For j= 0 to i-1
-		'WScript.Echo "j-"&j
-            If array_(j).Name > array_(j+1).Name Then
-                set temp = array_(j+1)
-                set array_(j+1) = array_(j)
-                set array_(j) = temp
-       	        'WScript.Echo array_(j).Name
+   ' MSGbox array_(1).Name
+    For i = (array_.Count - 1) To 1 Step -1
+      'MSGbox "i-"&i
+        For j = 0 To i - 1
+    'MSGbox "j-"&j
+            If array_(j).Name > array_(j + 1).Name Then
+                Set temp = array_(j + 1)
+                Set array_(j + 1) = array_(j)
+                Set array_(j) = temp
+                'MSGbox array_(j).Name
             End If
         Next
-	'WScript.Echo array_(i).Name
+  'MSGbox array_(i).Name
     Next
     Set SortArrayList_ByName = array_
 End Function
 
 'Clean characters from string...
 Function strClean(inString)
-  dim outString
-  dim thisChar
-  dim i
-  outString=""
-  for i=1 to len(inString)
-    thisChar=mid(inString,i,1)
+  Dim outString
+  Dim thisChar
+  Dim i
+  outString = ""
+  For i = 1 To Len(inString)
+    thisChar = Mid(inString, i, 1)
     Select Case thisChar
       Case ";", "'", """", "&", "%", "*" 'strings that might cause problems when executing SAS code
-        thisChar=" "
+        thisChar = " "
       Case "<", ">", "|", "/", "\"       'string, that might cause problems whilst saving files
-        thisChar=" "
-    end Select
-    outString=outString+thisChar
-   next
-   strClean=outString
+        thisChar = " "
+    End Select
+    outString = outString + thisChar
+   Next
+   strClean = outString
 End Function
+
+Function Checkerror(fnName)
+    Checkerror = False
+    
+    Dim strmsg      ' As String
+    Dim errNum      ' As Long
+    
+    If Err.Number <> 0 Then
+        strmsg = "Error #" & Hex(Err.Number) & vbCrLf & "In Function " & fnName & vbCrLf & Err.Description
+        'MsgBox strmsg  'Uncomment this line if you want to be notified via MessageBox of Errors in the script.
+        Checkerror = True
+    End If
+         
+End Function
+
+
+
+
+
+
