@@ -68,15 +68,17 @@ Sub EGPConvert_v8()
   Const egInformationMap = 25
   Dim EGPfile As String
   Dim programsFolder As String
-  
-  EGPfile = "C:\Users\drespc1\Desktop\ExtractCode\Project year.egp"
-  programsFolder = "C:\Users\drespc1\Desktop\ExtractCode\"
+  Dim objFS 'As "Scripting.FileSystemObject"
+  Dim objOutFile ' As TextStream
+
+  EGPfile = "C:\Users\" + User.get_() + "\Desktop\ExtractCode\SA Invoicing.egp"
+  programsFolder = "C:\Users\" + User.get_() + "\Desktop\ExtractCode\"
    
   ' Create a new SAS Enterprise Guide automation session
   On Error Resume Next
   Set Application = CreateObject(egVersion)
   If Err.Number <> 0 Then
-    MsgBox "ERROR: Need help with 'Set Application = WScript.CreateObject(egVersion)'"
+    MsgBox "ERROR: Need help with 'Set Application = CreateObject(egVersion)"
     End
   End If
    MsgBox Application.Name & ", Version: " & Application.Version & vbCrLf & "Opening project: " & EGPfile
@@ -88,8 +90,6 @@ Sub EGPConvert_v8()
       End
   End If
   
- 
-  
   Dim item
   Dim flow
   Dim Unsorted
@@ -97,13 +97,13 @@ Sub EGPConvert_v8()
   Dim outputFilename
   Dim TxtOutput
   Dim i
-  Dim nodeNumber
   
   MkDir programsFolder & Project.Name
     outputFilename = programsFolder & Project.Name & "\" & Project.Name & ".sas"
     'MsgBox "saving code to " & vbCrLf & outputFilename
-    'TxtOutput will be saved in outputFilename
-    TxtOutput = ""
+    
+  Set objFS = CreateObject("Scripting.FileSystemObject")
+  Set objOutFile = objFS.CreateTextFile(outputFilename, True)
   
   Set Unsorted = CreateObject("System.Collections.ArrayList")
   
@@ -113,7 +113,6 @@ Sub EGPConvert_v8()
     ' ProcessFlow is ContainerType of 0
     If flow.ContainerType = 0 Then
         'MsgBox "Process Flow: " & flow.Name
-        nodeNumber = 0
     ' Navigate the items in each process flow
     For Each item In flow.Items
       'MsgBox "=Unsorted<--" & item.Name & " Type: " & item.Type
@@ -121,64 +120,60 @@ Sub EGPConvert_v8()
     Next
     End If
   Next
-    Set Items_Sorted = SortArrayList_ByName(Unsorted)
-    For i = 0 To Items_Sorted.Count - 1
-      Set item = Items_Sorted(i)
-      MsgBox "  " & item.Name & ", item.Type=" & Str(item.Type)
+  
+  Set Items_Sorted = SortArrayList_ByName(Unsorted)
+  For i = 0 To Items_Sorted.Count - 1
+    Set item = Items_Sorted(i)
+    'MsgBox "  " & item.Name & ", item.Type=" & Str(item.Type)
 
-      'Only Process if item.name begins with a number
-        Dim item_Name_begins_with_number As Boolean
-          item_Name_begins_with_number = InStr(1, "0123456789", Left(item.Name, 1), 0) > 0
-       
-        If item_Name_begins_with_number Then
-          Select Case item.Type
-  
-          Case egCode
-            'MsgBox "  " & item.Name
-          TxtOutput = TxtOutput & _
-            "%LET _CLIENTTASKLABEL=" & strClean(item.Name) & ";" & vbCrLf & vbCrLf & item.text & vbCrLf & vbCrLf
-                  nodeNumber = nodeNumber + 1
+    'Only Process if item.name begins with a number
+      Dim item_Name_begins_with_number As Boolean
+        item_Name_begins_with_number = InStr(1, "0123456789", Left(item.Name, 1), 0) > 0
+     
+      If item_Name_begins_with_number Then
+        Select Case item.Type
+
+        Case egCode
+          'MsgBox "  " & item.Name
+        objOutFile.Write ( _
+          "%LET _CLIENTTASKLABEL=" & strClean(item.Name) & ";" & vbCrLf & vbCrLf & item.text & vbCrLf & vbCrLfLf _
+          )
+        
+        Case egNote
+        'Yet To implement
+        'objOutFile.Write ( _
+          "%LET _CLIENTTASKLABEL=" & strClean(item.Name) & ";" & vbCrLf & "/*" & vbCrLf & item.text & vbCrLf & "*/" & vbCrLfLf _
+          )
           
-          Case egNote
-          MsgBox "  " & item.Name & ", item.text=" & item.text
-          'TxtOutput = TxtOutput & _
-            "%LET _CLIENTTASKLABEL=" & strClean(item.Name) & ";" & vbCrLf & "/*" & vbCrLf & item.text & vbCrLf & "*/" & vbCrLf
-                  'nodeNumber = nodeNumber + 1
-                  
-          Case egTask, egQuery
-          Dim item_TaskCode_Is_Nothing As Boolean
-            item_TaskCode_Is_Nothing = item.TaskCode Is Nothing
-            'MsgBox "  " & item.Name & ", Task/Query" & vbCrLf & _
-                   "item_TaskCode_Is_Nothing is" & Str(item_TaskCode_Is_Nothing)
-            
-          If (Not item.TaskCode Is Nothing) Then
-            TxtOutput = TxtOutput & _
-              "%LET _CLIENTTASKLABEL=" & strClean(item.Name) & ";" & vbCrLf & vbCrLf & item.TaskCode.text & vbCrLf & vbCrLf
+        Case egTask, egQuery
+        Dim item_TaskCode_Is_Nothing As Boolean
+          item_TaskCode_Is_Nothing = item.TaskCode Is Nothing
+          'MsgBox "  " & item.Name & ", Task/Query" & vbCrLf & _
+                 "item_TaskCode_Is_Nothing is" & Str(item_TaskCode_Is_Nothing)
+          
+        If (Not item.TaskCode Is Nothing) Then
+            objOutFile.Write ( _
+              "%LET _CLIENTTASKLABEL=" & strClean(item.Name) & ";" & vbCrLf & vbCrLf & item.TaskCode.text & vbCrLf & vbCrLfLf _
+              )
           End If
-                  nodeNumber = nodeNumber + 1
-  
-          Case egData
-            'MsgBox "  " & item.Name & ", Data: " & item.fileName
+
+        Case egData
+          'MsgBox "  " & item.Name & ", Data: " & item.fileName
           'tableOfContents = tableOfContents & " (Data set)"
           Dim task
           For Each task In item.Tasks
             'MsgBox "    " & task.Name & ", sub-task: "
             If (Not task.TaskCode Is Nothing) Then
-            TxtOutput = TxtOutput & _
-              "%LET _CLIENTTASKLABEL=" & strClean(task.Name) & ";" & vbCrLf & vbCrLf & item.TaskCode.text & vbCrLf & vbCrLf
+            objOutFile.Write ( _
+              "%LET _CLIENTTASKLABEL=" & strClean(task.Name) & ";" & vbCrLf & vbCrLf & item.TaskCode.text & vbCrLf & vbCrLfLf _
+              )
             End If
           Next
-                    nodeNumber = nodeNumber + 1
-
-  
-          End Select
-      End If
-          Next
+        End Select
+    End If
+  Next
           
-    'MsgBox "nodeNumber=" & Str(nodeNumber)
-    If nodeNumber > 0 Then _
-      saveTextToFile outputFilename, TxtOutput
-  
+  objOutFile.Close
   
   ' Close the project
   Project.Close
@@ -209,7 +204,7 @@ End Function
 Function saveTextToFile(fileName, text)
   'MsgBox "running: saveTextToFile"
   Dim objFS As FileSystemObject
-  Dim objOutFile
+  Dim objOutFile As TextStream
   Set objFS = CreateObject("Scripting.FileSystemObject")
   Set objOutFile = objFS.CreateTextFile(fileName, True)
   objOutFile.Write (text)
@@ -276,3 +271,4 @@ Function Checkerror(fnName)
     End If
          
 End Function
+
